@@ -132,7 +132,8 @@ async def select_server(update: tg.Update , context: tge.ContextTypes.DEFAULT_TY
     keyboard.append([tg.InlineKeyboardButton("Exit",callback_data="Exit")])
     reply_markup = tg.InlineKeyboardMarkup(keyboard)
 
-    await context.bot.send_message(update.effective_chat.id,f"@{update.effective_user.username} select server:",reply_markup=reply_markup)
+    await context.bot.send_message(update.effective_chat.id,
+        f"Server selected: {server_interaction.selected_server}\n@{update.effective_user.username} select the server:",reply_markup=reply_markup)
 
 
 async def selection(update: tg.Update , context: tge.ContextTypes.DEFAULT_TYPE):

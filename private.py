@@ -6,3 +6,5 @@ user_whitelist : list[User] = []
 
 chat_id_whitelist : int = []
 #123456789
+
+script_paths:list[str] = []
