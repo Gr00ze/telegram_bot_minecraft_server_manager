@@ -3,9 +3,11 @@ import telegram.ext as tge
 from functools import wraps
 import server_interaction as server_interaction
 from datetime import datetime
-from private import TOKEN, user_whitelist, chat_id_whitelist
+from private import TOKEN, user_whitelist, chat_id_whitelist, script_paths
 
-app = None
+app:tge.Application = None
+MAX_MESSAGE_LENGTH:int = 4096
+
 
 
 def log_user(update: tg.Update):
@@ -41,22 +43,25 @@ def authorizer(*args, **kwargs):
 
 @authorizer
 async def start_server(update: tg.Update, context: tge.ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(update.effective_chat.id, "Trying to start")
+    await update.effective_message.reply_text("Trying to start")
     if server_interaction.process is not None:
         await context.bot.send_message(update.effective_chat.id, "Server already running")
+        return
+    if server_interaction.selected_server is None:
+        await context.bot.send_message(update.effective_chat.id, "No server selected")
         return
     task = app.create_task(server_interaction.server_starter())
     print("Task Server Starter Started")
     if not task:
         await context.bot.send_message(update.effective_chat.id, "Server start failed")
         return
-    await context.bot.send_message(update.effective_chat.id, "Starting")
+    await context.bot.send_message(update.effective_chat.id, f"Starting {server_interaction.selected_server}")
     app.create_task(server_interaction.server_reader(context.bot, update.effective_chat.id, task))
     print("Task Server Viewer Started")
 
 @authorizer
 async def stop_server(update: tg.Update, context: tge.ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(update.effective_chat.id, "Trying to stop")
+    await update.effective_message.reply_text("Trying to stop")
     if server_interaction.process is None:
         await context.bot.send_message(update.effective_chat.id, "Server already stopped")
         return
@@ -66,11 +71,11 @@ async def stop_server(update: tg.Update, context: tge.ContextTypes.DEFAULT_TYPE)
 
 @authorizer
 async def status_server(update: tg.Update, context: tge.ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(update.effective_chat.id, f"Server status: {server_interaction.status}" )
+    await context.bot.send_message(update.effective_chat.id, f"Server status: {server_interaction.status} \n >:)" )
 
 @authorizer
 async def send_command(update: tg.Update, context: tge.ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(update.effective_chat.id, "Trying to send")
+    await update.effective_message.reply_text("Trying to send")
     if server_interaction.process is None:
         await context.bot.send_message(update.effective_chat.id, "Server offline")
         return
@@ -79,24 +84,34 @@ async def send_command(update: tg.Update, context: tge.ContextTypes.DEFAULT_TYPE
         return
     command = " ".join(context.args)
     app.create_task(server_interaction.server_sender(command))
-    await server_interaction.asyncio.sleep(2)
-
-    reversed_server_messages:list = list(reversed(server_interaction.server_messages))
-    to_send : list = [reversed_server_messages[0].text] 
-    date = reversed_server_messages[0].date
-    for msg in reversed_server_messages[1:]:
-        if msg.date == date:
-            to_send.append(msg.text)
-        else:
-            break
-    
-    sr = "\n".join(to_send)
-
-    await context.bot.send_message(update.effective_chat.id, sr)
-    
     print("Task Server Sender Started")
+    await server_interaction.asyncio.sleep(3)
 
-@authorizer
+    #prendo la lista, la inverto (volento potrei scorrere al contrario)
+    #salvo la data del primo messaggio
+    #prendo tuti i messaggi con la stessa data
+
+ 
+    copy_messages = list(server_interaction.server_messages)
+    date = copy_messages[-1].date
+    text = ""
+    for msg in copy_messages:
+        temp_text = text
+        if msg.date != date:
+            continue
+        temp_text += msg.text + "\n"
+        if len(temp_text) >= MAX_MESSAGE_LENGTH:
+            await context.bot.send_message(update.effective_chat.id, text)
+            text = msg.text + "\n"
+        else:
+            text = temp_text
+    await context.bot.send_message(update.effective_chat.id, text)
+
+
+
+
+
+#authorizer in send_command
 async def player_online(update: tg.Update, context: tge.ContextTypes.DEFAULT_TYPE):
     context.args=["list"]
     await send_command(update, context)
@@ -106,8 +121,33 @@ async def player_online(update: tg.Update, context: tge.ContextTypes.DEFAULT_TYP
 async def help_message(update: tg.Update, context: tge.ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(update.effective_chat.id, "Sorry I cannot help you")
 
-async def error_handler(update: tg.Update, context: tge.ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(update.effective_chat.id, "An error occurred")
+@authorizer
+async def select_server(update: tg.Update , context: tge.ContextTypes.DEFAULT_TYPE):
+    if server_interaction.process:
+        await update.effective_message.reply_text("There is already a server up")
+        return
+    keyboard:list[list[tg.InlineKeyboardButton]] = [
+        [tg.InlineKeyboardButton(f"{script_name}", callback_data=script_name)] for script_name in script_paths.keys()
+    ] 
+    keyboard.append([tg.InlineKeyboardButton("Exit",callback_data="Exit")])
+    reply_markup = tg.InlineKeyboardMarkup(keyboard)
+
+    await context.bot.send_message(update.effective_chat.id,f"@{update.effective_user.username} select server:",reply_markup=reply_markup)
+
+
+async def selection(update: tg.Update , context: tge.ContextTypes.DEFAULT_TYPE):
+    query:tg.CallbackQuery = update.callback_query
+    selected:str = query.data
+    if selected in script_paths.keys():
+        server_interaction.selected_server = selected
+        await query.answer("Done")
+        await query.edit_message_text(f"@{query.from_user.username} Selected {selected}")
+        return
+    await query.answer("No change done")
+    await query.edit_message_reply_markup()
+    await query.edit_message_text(f"@{query.from_user.username} no change done")
+    
+
 
 
 def main():
@@ -123,7 +163,8 @@ def main():
     app.add_handler(tge.CommandHandler("sendcommand", send_command))
     app.add_handler(tge.CommandHandler("playeronline", player_online))
     app.add_handler(tge.CommandHandler("help", help_message))
-    app.add_error_handler(error_handler)
+    app.add_handler(tge.CommandHandler("selectserver", select_server))
+    app.add_handler(tge.CallbackQueryHandler(selection))
     print("Running")
     app.run_polling(poll_interval=5)
 

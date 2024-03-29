@@ -2,17 +2,17 @@ import platform
 import asyncio
 import asyncio.subprocess as sp
 from telegram import Bot
-from private import script_path
+from private import script_paths
 import re
 class ServerMessage:
     
     def __init__(self, message:str):
         if self.is_valid(message):
-            parts = message.split(' ')
-            self.date = parts[0]
-            self.type = parts[1]
-            self.from_ = parts[2]
-            self.text = ' '.join(parts[3:])
+            match = re.search(r'\[(.*?)\] \[(.*?)\] \[(.*?)\]: (.*)', message)
+            self.date = match.group(1)
+            self.type = match.group(2)
+            self.from_ = match.group(3)
+            self.text = match.group(4)
         else:
             self.date = None
             self.type = None
@@ -29,7 +29,8 @@ process: sp.Process = None
 status: str = None
 last_line : str = None
 server_messages : list[ServerMessage] = []
-MAX_SIZE_BUFFER : int = 100
+MAX_SIZE_BUFFER : int = 200
+selected_server : str = None
 
 
 
@@ -39,7 +40,7 @@ async def server_starter() -> sp.Process:
     global status
     if platform.system() != "Linux":
         return None
-    process = await asyncio.create_subprocess_exec(*["/bin/sh", script_path], stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE)
+    process = await asyncio.create_subprocess_exec(*["/bin/sh", script_paths[selected_server]], stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE)
     return process
     
 
