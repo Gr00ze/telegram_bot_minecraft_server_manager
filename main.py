@@ -78,7 +78,7 @@ async def stop_server(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @authorizer
 async def status_server(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(update.effective_chat.id, f"Server status: {server_manager.status}" )
+    await context.bot.send_message(update.effective_chat.id, f"Server {server_manager.selected_server} status: {server_manager.status}" )
     log(f"Sending status to user...")
 
 @authorizer
