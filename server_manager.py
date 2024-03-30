@@ -77,15 +77,19 @@ async def server_sender(command:str):
 async def message_listener(bot:Bot, chat_id:int, server_trigger_message:str, user_custom_reply:str=None, new_status:str = None):
     global status
     log(f"Waiting for: {server_trigger_message}", subject=message_listener.__name__)
-    while True:
-        await asyncio.sleep(1)
+    timeout:int = 60 * 20
+    sleep_time: int = 0.5
+    while timeout > 0:
+        await asyncio.sleep(sleep_time)
+        timeout -= 1 * sleep_time
         if not last_line or server_trigger_message not in last_line:
             continue
         if new_status:
             status = new_status
         await bot.send_message(chat_id=chat_id, text=user_custom_reply if user_custom_reply else str(last_line))
         break
-
+    
+    log(f"Timeout for: {server_trigger_message}", subject=message_listener.__name__)
 
 
 
