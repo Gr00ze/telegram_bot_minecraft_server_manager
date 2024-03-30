@@ -4,6 +4,8 @@ import asyncio.subprocess as sp
 from telegram import Bot
 from private import script_paths
 import re
+from log import *
+
 class ServerMessage:
     
     def __init__(self, message:str):
@@ -29,59 +31,42 @@ process: sp.Process = None
 status: str = None
 last_line : str = None
 server_messages : list[ServerMessage] = []
-MAX_SIZE_BUFFER : int = 200
+MAX_BUFFER_SIZE : int = 200
 selected_server : str = None
 
+#statuses = ["STARTING", "RUNNING", "STOPPING", "CLOSING","SHUTDOWN"]
 
-
-
-
-async def server_starter() -> sp.Process:
+async def server_process_starter() -> sp.Process:
     global status
     if platform.system() != "Linux":
+        log(f"{platform.system()} not supported",subject=server_process_starter.__name__)
         return None
     process = await asyncio.create_subprocess_exec(*["/bin/sh", script_paths[selected_server]], stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE)
     return process
     
-
-
-async def server_reader(bot:Bot, chat_id:int, task:sp.Process):
+async def server_output_reader(task:sp.Process):
     global process, last_line, status
     process = await task
-    print(process)
+    log(f"PID:{process}",subject=server_output_reader.__name__)
     bytes_line:bytes = await process.stdout.readline()
-    status = "STARTING"
-    while (True):
+    last_line = bytes_line.decode()
+    status = "STARTING 🚀"
+    while ("Exiting..." not in last_line):
         bytes_line:bytes = await process.stdout.readline()
         last_line = bytes_line.decode()
-        if "Dedicated server took" in last_line:
-            await bot.send_message(chat_id=chat_id, text="Server started")
-            status = "RUNNING"
-        if "Saving worlds" in last_line:
-            await bot.send_message(chat_id=chat_id, text="Server closing")
-            status = "CLOSING"
-
-        if "Exiting..." in last_line:
-            await bot.send_message(chat_id=chat_id, text="Server closed")
-            status = "SHUTDOWN"
-            break
-
         message = ServerMessage(last_line)
         server_messages.append(message)
-        if len(server_messages) > MAX_SIZE_BUFFER:
+        if len(server_messages) > MAX_BUFFER_SIZE:
             del server_messages[0]
     
     process.stdin.close()
     process.terminate()
     process = None
     
-    
-
-        
 async def server_stopper():
     global status
     await server_sender("stop")
-    status = "STOPPING"
+    status = "STOPPING ⬇️"
 
 
 async def server_sender(command:str):
@@ -89,7 +74,19 @@ async def server_sender(command:str):
     process.stdin.write(f"{command}\n".encode())
 
     
-    
+async def message_listener(bot:Bot, chat_id:int, server_trigger_message:str, user_custom_reply:str=None, new_status:str = None):
+    global status
+    log(f"Waiting for: {server_trigger_message}", subject=message_listener.__name__)
+    while True:
+        await asyncio.sleep(1)
+        if not last_line or server_trigger_message not in last_line:
+            continue
+        if new_status:
+            status = new_status
+        await bot.send_message(chat_id=chat_id, text=user_custom_reply if user_custom_reply else str(last_line))
+        break
+
+
 
 
 
