@@ -28,7 +28,7 @@ def authorizer(*args, **kwargs):
                 return await func(update, context, *args, **kwargs)
             else:
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=message or "You are not authorized to use this command.")
-                log(f"User @{user.username}] ({user.id}) not authorized")
+                log(f"User @{user.username} ({user.id}) not authorized")
         return wrapper
     return inner(decorated_func) if is_func else inner
 
@@ -180,7 +180,7 @@ def main():
     app.add_handler(CallbackQueryHandler(selection))
     app.add_error_handler(error_handler)
     log("Running")
-    app.run_polling(poll_interval=5)
+    app.run_polling(poll_interval=2)
 
 if __name__ == "__main__":
     main()
