@@ -34,6 +34,7 @@ server_messages : list[ServerMessage] = []
 MAX_BUFFER_SIZE : int = 200
 selected_server : str = None
 
+
 #statuses = ["STARTING", "RUNNING", "STOPPING", "CLOSING","SHUTDOWN"]
 
 async def server_process_starter() -> sp.Process:
@@ -54,6 +55,7 @@ async def server_output_reader(task:sp.Process):
     while ("Exiting..." not in last_line):
         bytes_line:bytes = await process.stdout.readline()
         last_line = bytes_line.decode()
+        #log(f"Writing lastline :{last_line}",subject=server_output_reader.__name__) 
         message = ServerMessage(last_line)
         server_messages.append(message)
         if len(server_messages) > MAX_BUFFER_SIZE:
@@ -77,21 +79,41 @@ async def server_sender(command:str):
 async def message_listener(bot:Bot, chat_id:int, server_trigger_message:str, user_custom_reply:str=None, new_status:str = None):
     global status
     log(f"Waiting for: {server_trigger_message}", subject=message_listener.__name__)
-    timeout:int = 60 * 20
-    sleep_time: int = 0.5
+    timeout:int = 60 * 5
+    sleep_time: int = 0.2
     while timeout > 0:
         await asyncio.sleep(sleep_time)
         timeout -= 1 * sleep_time
+        
+        for message in server_messages:
+            if server_trigger_message in message.text:
+                log(f"Found on server messages list: {server_trigger_message}", subject=message_listener.__name__)    
+                if new_status:
+                    status = new_status
+                try:
+                    await bot.send_message(chat_id=chat_id, text=user_custom_reply if user_custom_reply else str(last_line))
+                except Exception as e:
+                    log(f"Error sending message: {e}", subject=message_listener.__name__)
+        
+                return
+
+        #log(f"Reading lastline {last_line}", subject=message_listener.__name__)
         if not last_line or server_trigger_message not in last_line:
             continue
+        
         if new_status:
             status = new_status
-        await bot.send_message(chat_id=chat_id, text=user_custom_reply if user_custom_reply else str(last_line))
-        break
-    
+        try:
+            await bot.send_message(chat_id=chat_id, text=user_custom_reply if user_custom_reply else str(last_line))
+        except Exception as e:
+            log(f"Error sending message: {e}", subject=message_listener.__name__)
+        
+        return
+        
     log(f"Timeout for: {server_trigger_message}", subject=message_listener.__name__)
 
-
+async def message_match_listener(bot:Bot, chat_id:int, server_trigger_message:str, user_custom_reply:str=None, new_status:str = None):
+    global status
 
 
 
