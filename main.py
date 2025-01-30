@@ -54,8 +54,11 @@ async def start_server(update: Update, context: ContextTypes.DEFAULT_TYPE):
     app.create_task(server_manager.server_output_reader(task))
     log(f"Created task <{server_manager.server_output_reader.__name__}>")
 
-    app.create_task(server_manager.message_listener(context.bot, update.effective_chat.id, "Dedicated server took", "Server started 🟢","RUNNING 🟢"))
-    log(f"Created task <{server_manager.message_listener.__name__}>")
+    app.create_task(server_manager.message_listener(context.bot, update.effective_chat.id, "Preparing spawn area:", "Opening the world 🌍","WORLD OPENING 🌍"))
+    log(f"Created task <{server_manager.message_listener.__name__}> for Almost running")
+
+    app.create_task(server_manager.message_listener(context.bot, update.effective_chat.id, "Done", "Server started 🟢","RUNNING 🟢"))
+    log(f"Created task <{server_manager.message_listener.__name__}> for RUNNING")
 
 @authorizer
 async def stop_server(update: Update, context: ContextTypes.DEFAULT_TYPE):
