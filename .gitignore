@@ -1,2 +1,7 @@
-/private.py
-/__pycache__
+#Files and folders of environment
+Lib
+Scripts
+pyvenv.cfg
+
+#cache
+__pycache__
