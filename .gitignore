@@ -5,3 +5,12 @@ pyvenv.cfg
 
 #cache
 __pycache__
+
+#config
+config.json
+
+#test
+test
+
+#other
+Documentation
