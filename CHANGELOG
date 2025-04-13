@@ -1,0 +1,12 @@
+v2.0.0
+-Added changelog
+-Reworked the entire code
+--Modularized
+--Classified
+-Added a better config system
+-Fixed an issue that could lead to multiple useless tasks being open
+-Fixed an issue where the Minecraft server process was not terminating as expected
+-Added port scan task
+-Improved stop management logic for the Minecraft server process 
+v1.0.0
+-Created the first working bot
