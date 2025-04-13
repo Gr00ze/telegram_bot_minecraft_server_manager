@@ -2,6 +2,7 @@
 Lib
 Scripts
 pyvenv.cfg
+.vscode
 
 #cache
 __pycache__
@@ -14,3 +15,4 @@ test
 
 #other
 Documentation
+TODO
