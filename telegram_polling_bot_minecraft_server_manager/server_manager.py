@@ -66,9 +66,12 @@ class MCServerManager:
 
         if self.process.returncode == 0:
             log(f"Server stopped successfully",subject=self.server_stopper.__name__)
-        else:
-            log(f"Server stopped with error code: {self.process.returncode}",subject=self.server_stopper.__name__)
+            self.process = None
+            return 0
+        
+        log(f"Server stopped with error code: {self.process.returncode}",subject=self.server_stopper.__name__)
         self.process = None
+        return 1
 
 
     async def server_sender(self,command:str):
