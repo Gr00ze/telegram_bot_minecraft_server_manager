@@ -78,6 +78,7 @@ class MCBot:
         #precheks
         if self.server_manager is None:
             #It should never happen, but just in case
+            log(f"Server Manager is not initialized")
             return
         if self.server_manager.process:
             await context.bot.send_message(update.effective_chat.id, "Server already starting or running ⚠️")
@@ -166,14 +167,25 @@ class MCBot:
         
         
         await update.effective_message.reply_text("Stopping 🛑")
-        self.app.create_task(self.server_manager.server_stopper())
-        log(f"Created task <{self.server_manager.server_stopper.__name__}>")
-
+        #Message listeners for user feedback
         self.app.create_task(self.server_manager.message_listener(context.bot, update.effective_chat.id, "Saving worlds", "Server closing ⬇️", "CLOSING ⬇️"))
         log(f"Created task <{self.server_manager.message_listener.__name__}>")
 
         self.app.create_task(self.server_manager.message_listener(context.bot, update.effective_chat.id, "Exiting...", "Server closed 💤", "SHUTDOWN 💤"))
         log(f"Created task <{self.server_manager.message_listener.__name__}>")
+        #Actual action
+        close_action_task = self.app.create_task(self.server_manager.server_stopper())
+        log(f"Created task <{self.server_manager.server_stopper.__name__}>")
+        result = await close_action_task
+
+        if result == 0:
+            await context.bot.send_message(update.effective_chat.id, "Server closed 💤")
+            self.server_manager.status = "SHUTDOWN 💤"
+            log(f"Java process exited sucesfully")
+            self.close_all_tasks()
+
+
+        
     
         
 
