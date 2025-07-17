@@ -3,7 +3,8 @@ from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler, App
 from functools import wraps
 
 
-
+from telegram_polling_bot_minecraft_server_manager.server_manager import ServerStatus
+from telegram_polling_bot_minecraft_server_manager.server_message import ServerMessage
 from telegram_polling_bot_minecraft_server_manager.server_manager import MCServerManager,asyncio
 
 from telegram_polling_bot_minecraft_server_manager.log import log,log_update
@@ -120,7 +121,7 @@ class MCBot:
                 update.effective_chat.id,
                 "Preparing spawn area:",
                 "Opening the world 🌍",
-                "WORLD OPENING 🌍"
+                ServerStatus.WORLD_OPENING
             )
         )
         log(f"Created task <{self.server_manager.message_listener.__name__}> for Almost running")
@@ -136,7 +137,7 @@ class MCBot:
                     update.effective_chat.id, 
                     "Done", 
                     "Server started 🟢",
-                    "RUNNING 🟢"
+                    ServerStatus.RUNNING
                 )
             )
             log(f"Created task <{self.server_manager.message_listener.__name__}> for RUNNING")
@@ -168,10 +169,10 @@ class MCBot:
         
         await update.effective_message.reply_text("Stopping 🛑")
         #Message listeners for user feedback
-        self.app.create_task(self.server_manager.message_listener(context.bot, update.effective_chat.id, "Saving worlds", "Server closing ⬇️", "CLOSING ⬇️"))
+        self.app.create_task(self.server_manager.message_listener(context.bot, update.effective_chat.id, "Saving worlds", "Server closing ⬇️", ServerStatus.CLOSING))
         log(f"Created task <{self.server_manager.message_listener.__name__}>")
 
-        self.app.create_task(self.server_manager.message_listener(context.bot, update.effective_chat.id, "Exiting...", "Server closed 💤", "SHUTDOWN 💤"))
+        self.app.create_task(self.server_manager.message_listener(context.bot, update.effective_chat.id, "Exiting...", "Server closed 💤", ServerStatus.SHUTDOWN))
         log(f"Created task <{self.server_manager.message_listener.__name__}>")
         #Actual action
         close_action_task = self.app.create_task(self.server_manager.server_stopper())
@@ -180,7 +181,7 @@ class MCBot:
 
         if result == 0:
             await context.bot.send_message(update.effective_chat.id, "Server closed 💤")
-            self.server_manager.status = "SHUTDOWN 💤"
+            self.server_manager.status = ServerStatus.SHUTDOWN
             log(f"Java process exited sucesfully")
             self.close_all_tasks()
 
@@ -191,39 +192,71 @@ class MCBot:
 
     @authorize
     async def status_server(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await context.bot.send_message(update.effective_chat.id, f"Server {self.server_manager.selected_server} status: {self.server_manager.status}" )
+        await context.bot.send_message(update.effective_chat.id, f"Server {self.server_manager.selected_server} status: {self.server_manager.status.value}" )
         log(f"Sending status to user...")
 
     @authorize
     async def send_command(self,update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("Trying to send 🔄")
-        if self.server_manager.process is None:
-            await context.bot.send_message(update.effective_chat.id, "Server offline 💤")
+        #server not online
+        if self.server_manager.status != ServerStatus.RUNNING:
+            await context.bot.send_message(
+                update.effective_chat.id, 
+                f"The server is {self.server_manager.status.value}.\nYou can send commands only on status {ServerStatus.RUNNING.value}"
+                )
             log(f"User tried to send a command to offline server")
             return
+        #no command sent
         if len(context.args) == 0:
             await context.bot.send_message(update.effective_chat.id, "No command sent 🤔")
             log(f"User tried to send a command but empty args found")
             return
+        
         command:str = " ".join(context.args)
-        self.app.create_task(self.server_manager.server_sender(command))
-        log(f"Created task <{self.server_manager.server_sender.__name__}>")
-        await asyncio.sleep(3)
+        #send command and receive response
+        self.server_manager.reading_new_messages = True
 
-        copy_messages = list(self.server_manager.server_messages)
-        date = copy_messages[-1].date
+        await self.server_manager.server_sender(command)
+        log(f"Created task <{self.server_manager.server_sender.__name__}>")
+        new_messages: list[ServerMessage] = []
+
+        try:
+            while True:
+                # Aspetta una riga nuova con timeout
+                msg = await asyncio.wait_for(self.server_manager.message_queue.get(), timeout=3)
+                log(f"Got message: {msg.text}", subject=self.send_command.__name__)
+                new_messages.append(msg)
+        except asyncio.TimeoutError:
+            # Timeout: nessun messaggio nuovo entro max_wait secondi
+            pass
+
+        self.server_manager.reading_new_messages = False
+        
+        #handle response data 
+        if len(new_messages) == 0:
+            await context.bot.send_message(update.effective_chat.id, "No answer sent")
+            return
+        
+
+        #current_date = new_messages[-1].date
         text:str = ""
-        for msg in copy_messages:
-            temp_text = text
-            if msg.date != date:
-                continue
-            temp_text += msg.text + "\n"
-            if len(temp_text) >= MAX_MESSAGE_LENGTH:
-                await context.bot.send_message(update.effective_chat.id, text)
-                text = msg.text + "\n"
+        # Combine messages into as few send_message calls as possible, splitting only if too long, but should mantain the for order
+        text = ""
+        for msg in new_messages:
+            # If adding this message would exceed the max length, send what we have so far first
+            if len(text) + len(msg.text) + 1 >= MAX_MESSAGE_LENGTH:
+                if text.strip():
+                    await context.bot.send_message(update.effective_chat.id, text)
+                    text = ""
+                # If the single message itself is too long, split and send in chunks
+            if len(msg.text) >= MAX_MESSAGE_LENGTH:
+                for i in range(0, len(msg.text), MAX_MESSAGE_LENGTH):
+                    await context.bot.send_message(update.effective_chat.id, msg.text[i:i+MAX_MESSAGE_LENGTH])
             else:
-                text = temp_text
-        await context.bot.send_message(update.effective_chat.id, text)
+                text += msg.text + "\n"
+        if text.strip():
+            await context.bot.send_message(update.effective_chat.id, text)
+    
 
     #authorizer in send_command
     async def player_online(self,update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -8,6 +8,17 @@ from telegram import Bot
 from telegram_polling_bot_minecraft_server_manager.server_message import ServerMessage
 from telegram_polling_bot_minecraft_server_manager.log import log
 
+#TODO class enumeratorstate
+from enum import Enum
+
+class ServerStatus(str, Enum):
+    STARTING = "STARTING 🚀"
+    RUNNING = "RUNNING 🟢"
+    STOPPING = "STOPPING ⬇️"
+    CLOSING = "CLOSING ⬇️"
+    SHUTDOWN = "SHUTDOWN 💤"
+    WORLD_OPENING = "WORLD OPENING 🌍"
+
 
 MAX_BUFFER_SIZE : int = 200
 
@@ -17,10 +28,11 @@ class MCServerManager:
     
     def __init__(self, script_paths):
         self.process: asp.Process = None
-        self.status: str = None
-        #statuses = ["STARTING", "RUNNING", "STOPPING", "CLOSING","SHUTDOWN"]
+        self.status: ServerStatus = ServerStatus.SHUTDOWN
         self.last_line:str = None
-        self.server_messages:list[ServerMessage] = []        
+        self.server_messages:list[ServerMessage] = []   
+        self.message_queue:asyncio.Queue[ServerMessage] = asyncio.Queue() 
+        self.reading_new_messages: bool = False    
         self.selected_server:str = None
         self.script_paths:list[str] = script_paths
     
@@ -37,7 +49,7 @@ class MCServerManager:
     async def server_output_reader(self, task:asp.Process):
         self.process = await task
         log(f"PID:{self.process}",subject=self.server_output_reader.__name__)
-        self.status = "STARTING 🚀"
+        self.status = ServerStatus.STARTING
         self.server_messages.clear()
         self.last_line = None
 
@@ -51,6 +63,9 @@ class MCServerManager:
             #log(f"Writing lastline :{last_line}",subject=server_output_reader.__name__) 
             message = ServerMessage(self.last_line)
             self.server_messages.append(message)
+            if self.reading_new_messages:
+                await self.message_queue.put(message)
+
             if len(self.server_messages) > MAX_BUFFER_SIZE:
                 del self.server_messages[0]
             if("Exiting..." in self.last_line):
@@ -60,7 +75,7 @@ class MCServerManager:
         
     async def server_stopper(self):
         await self.server_sender("stop")
-        self.status = "STOPPING ⬇️"
+        self.status = ServerStatus.STOPPING
         self.process.stdin.close()
         await self.process.wait()
 
